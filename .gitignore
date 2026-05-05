@@ -1,0 +1,26 @@
+# Rust
+/target
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project Specific
+logs/
+tensorboard/
+models/checkpoints/
+models/**/*.zip
+models/eval/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "predator-snake-dqn"
+version = "0.1.0"
+description = "High-performance Rust Snake Gymnasium environment with PyO3"
+requires-python = ">=3.10"
+dependencies = [
+  "gymnasium>=0.29",
+  "numpy>=1.24",
+  "stable-baselines3>=2.3",
+]
+
+[tool.maturin]
+module-name = "predator_snake_dqn._core"
+python-source = "python"
+features = ["pyo3/extension-module"]
