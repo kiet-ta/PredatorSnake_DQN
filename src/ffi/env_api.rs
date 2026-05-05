@@ -7,7 +7,7 @@ use pyo3::{
 };
 
 use crate::{
-    app::builder::build_app,
+    app::{builder::build_app, schedules::SnakeStepSchedule},
     bridge::numpy_view::take_observation_array,
     domain::{action::RelativeAction, config::EnvConfig},
     ecs::resources::{PendingAction, StepMetrics, reset_episode},
@@ -16,6 +16,7 @@ use crate::{
 #[pyclass(unsendable)]
 pub struct PySnakeCore {
     app: App,
+    render_enabled: bool,
 }
 
 #[pymethods]
@@ -33,6 +34,7 @@ impl PySnakeCore {
             .map_err(PyValueError::new_err)?;
         Ok(Self {
             app: build_app(&config),
+            render_enabled: render,
         })
     }
 
@@ -41,6 +43,9 @@ impl PySnakeCore {
         py: Python<'py>,
     ) -> PyResult<(Bound<'py, PyArray3<u8>>, Bound<'py, PyDict>)> {
         reset_episode(slf.app.world_mut());
+        if slf.render_enabled {
+            slf.app.update();
+        }
         let observation = take_observation_array(py, slf.app.world_mut());
         let info = Self::build_info_dict(py, slf.app.world().resource::<StepMetrics>())?;
         Ok((observation, info))
@@ -68,7 +73,10 @@ impl PySnakeCore {
 
         let parsed_action = RelativeAction::try_from(action).map_err(PyValueError::new_err)?;
         slf.app.world_mut().resource_mut::<PendingAction>().0 = parsed_action;
-        slf.app.update();
+        slf.app.world_mut().run_schedule(SnakeStepSchedule);
+        if slf.render_enabled {
+            slf.app.update();
+        }
 
         let (reward, terminated, truncated) = {
             let metrics = slf.app.world().resource::<StepMetrics>();
@@ -78,6 +86,13 @@ impl PySnakeCore {
         let observation = take_observation_array(py, slf.app.world_mut());
 
         Ok((observation, reward, terminated, truncated, info))
+    }
+
+    pub fn render_tick(mut slf: PyRefMut<'_, Self>) -> PyResult<()> {
+        if slf.render_enabled {
+            slf.app.update();
+        }
+        Ok(())
     }
 }
 

@@ -62,6 +62,8 @@ class SnakeEnv(gym.Env[np.ndarray, int]):
         return obs, float(reward), bool(terminated), bool(truncated), dict(info)
 
     def render(self) -> None:
+        if self.render_enabled:
+            self._core.render_tick()
         return None
 
     def close(self) -> None:

@@ -1,6 +1,9 @@
 use ndarray::{Array3, Axis};
 
-use bevy::prelude::{Res, ResMut};
+use bevy::prelude::{
+    Camera2dBundle, Color, Commands, Component, Query, Res, ResMut, Sprite, SpriteBundle,
+    Transform, Vec2,
+};
 
 use crate::{
     domain::{
@@ -107,5 +110,76 @@ pub fn write_observation_grid(
 
         grid[(channel, y, x)] = 1;
         grid[(CHANNEL_EMPTY, y, x)] = 0;
+    }
+}
+
+#[derive(Component)]
+pub struct RenderCell {
+    pub x: usize,
+    pub y: usize,
+}
+
+pub fn setup_render_scene(mut commands: Commands<'_, '_>, config: Res<'_, EnvConfigResource>) {
+    commands.spawn(Camera2dBundle::default());
+
+    let width = config.0.width;
+    let height = config.0.height;
+    let tile_size = 24.0f32;
+    let board_width = width as f32 * tile_size;
+    let board_height = height as f32 * tile_size;
+
+    for y in 0..height {
+        for x in 0..width {
+            let world_x = x as f32 * tile_size - board_width / 2.0 + tile_size / 2.0;
+            let world_y = board_height / 2.0 - y as f32 * tile_size - tile_size / 2.0;
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite {
+                        color: color_for_channels(true, false, false, false),
+                        custom_size: Some(Vec2::splat(tile_size - 1.0)),
+                        ..Default::default()
+                    },
+                    transform: Transform::from_xyz(world_x, world_y, 0.0),
+                    ..Default::default()
+                },
+                RenderCell { x, y },
+            ));
+        }
+    }
+}
+
+pub fn sync_render_scene(
+    observation: Res<'_, ObservationBuffer>,
+    mut cells: Query<'_, '_, (&RenderCell, &mut Sprite)>,
+) {
+    let (channels, height, width) = observation.grid.dim();
+    if channels != OBS_CHANNELS {
+        return;
+    }
+
+    for (cell, mut sprite) in &mut cells {
+        if cell.x >= width || cell.y >= height {
+            continue;
+        }
+
+        let is_empty = observation.grid[(CHANNEL_EMPTY, cell.y, cell.x)] == 1;
+        let is_head = observation.grid[(CHANNEL_HEAD, cell.y, cell.x)] == 1;
+        let is_body = observation.grid[(CHANNEL_BODY, cell.y, cell.x)] == 1;
+        let is_food = observation.grid[(CHANNEL_FOOD, cell.y, cell.x)] == 1;
+        sprite.color = color_for_channels(is_empty, is_head, is_body, is_food);
+    }
+}
+
+fn color_for_channels(is_empty: bool, is_head: bool, is_body: bool, is_food: bool) -> Color {
+    if is_head {
+        Color::srgb(0.2, 0.9, 0.2)
+    } else if is_body {
+        Color::srgb(0.1, 0.45, 0.1)
+    } else if is_food {
+        Color::srgb(0.95, 0.15, 0.15)
+    } else if is_empty {
+        Color::srgb(0.08, 0.08, 0.08)
+    } else {
+        Color::srgb(0.2, 0.2, 0.2)
     }
 }

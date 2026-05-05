@@ -10,9 +10,9 @@ High-performance custom Snake reinforcement learning environment with a **Rust E
 
 ## 🏗️ Architecture
 
-- **Data Plane (Rust):** High-performance game logic, collision detection, and reward calculation using Bevy ECS.
-- **Control Plane (Python):** Deep Q-Network (DQN) training and evaluation.
-- **Bridge:** Zero-copy observation transfer via PyO3 and rust-numpy.
+- **Data Plane (Rust):** High-performance game logic, collision detection, and reward calculation using **Bevy ECS**.
+- **Control Plane (Python):** Deep Q-Network (DQN) training and evaluation using **Stable-Baselines3**.
+- **Bridge:** Zero-copy observation transfer via **PyO3** and **rust-numpy**, ensuring minimal overhead between the engine and the AI.
 
 ---
 
@@ -48,21 +48,15 @@ python examples/train_sb3.py --train --n-envs 8 --total-timesteps 5000000 --expl
 
 **Argument Breakdown:**
 
-- `--train`: Activates training mode.
-- `--n-envs 8`: Spawns 8 parallel environment workers. This utilizes multiple CPU cores to collect experience 8x faster.
-- `--total-timesteps 5000000`: The total number of steps the agent will take. 5M is usually enough for complex strategic emergence.
-- `--exploration-fraction 0.2`: The agent will spend 20% of the total time (1M steps) primarily exploring (taking random actions) to discover rewards.
-- `--learning-rate 0.0001`: The step size for neural network weight updates. A small value ensures stable convergence.
+- `--n-envs 8`: Spawns 8 parallel workers utilizing multiple CPU cores.
+- `--total-timesteps 5000000`: 5M steps for complex strategic emergence.
+- `--exploration-fraction 0.2`: 20% of time spent on random exploration.
 
 ### B. Resuming Training
-
-To continue training from a saved checkpoint:
 
 ```bash
 python examples/train_sb3.py --resume --model-path ./models/best_model/best_model.zip --total-timesteps 1000000
 ```
-
-_Note: Resuming automatically adjusts exploration parameters to focus on fine-tuning._
 
 ---
 
@@ -70,21 +64,50 @@ _Note: Resuming automatically adjusts exploration parameters to focus on fine-tu
 
 ### 1. Watch the AI Play (Rendering)
 
-To visualize the agent's performance after training:
+#### Recommended (stable): Python renderer
 
 ```bash
-python examples/train_sb3.py --play --model-path ./models/best_model/best_model.zip
+python examples/train_sb3.py --play --model-path ./models/best_model/best_model.zip --play-renderer python
+```
+
+You should see startup logs similar to:
+
+- `[UI Renderer] Mode: python`
+- `[UI Renderer] Active backend: QtAgg`
+
+#### Optional (experimental): Bevy renderer
+
+```bash
+python examples/train_sb3.py --play --model-path ./models/best_model/best_model.zip --play-renderer bevy
+```
+
+> Bevy window mode may freeze under manual ticking (`app.update()` from Python) due to Winit event-loop constraints. Use the Python renderer for reliable review.
+
+#### If no UI appears in Python renderer
+
+1. Check backend:
+
+```bash
+python -c "import matplotlib; print(matplotlib.get_backend())"
+```
+
+2. Install an interactive backend (recommended: Qt):
+
+```bash
+pip install PyQt6
+```
+
+3. Force Qt backend and run play:
+
+```bash
+MPLBACKEND=QtAgg python examples/train_sb3.py --play --model-path ./models/best_model/best_model.zip --play-renderer python
 ```
 
 ### 2. Monitor with TensorBoard
 
-Track metrics like `mean_reward`, `loss`, and `episode_length` in real-time:
-
 ```bash
 tensorboard --logdir ./tensorboard/
 ```
-
-Then visit: `http://localhost:6006` in your browser.
 
 ---
 
@@ -92,23 +115,37 @@ Then visit: `http://localhost:6006` in your browser.
 
 ### Observation Space
 
-The model receives a 4-channel one-hot encoded tensor `[4, H, W]`:
+The model receives a **4-channel one-hot encoded tensor** `[4, H, W]`:
 
 - **Channel 0:** Empty space.
 - **Channel 1:** Snake head.
 - **Channel 2:** Snake body.
 - **Channel 3:** Food.
 
-### Reward Signal
+🖼️ **[One-Hot Encoding Visualizer](https://drive.google.com/file/d/1pZwmL65KieHbzkRz3GIVKz13DoQpGB3j/view?usp=drive_link)**
 
-- **+1.0**: Eating food.
-- **-1.0**: Collision (Death).
-- **-0.01**: Step penalty (Encourages efficiency).
+### Reward Signal (configured in Rust)
+
+- **+10.0**: Eating food (Encourages growth).
+- **-10.0**: Collision with wall or body (Death penalty).
+- **-0.01**: Step penalty (Encourages finding food efficiently).
 
 ### Action Space
 
 `Discrete(3)` relative controls:
 
-- `0`: Straight
-- `1`: Turn Left
-- `2`: Turn Right
+- `0`: Straight | `1`: Turn Left | `2`: Turn Right
+
+---
+
+## 📈 Visual Results & Analysis
+
+- 🏆 **Evaluation Metrics:** [View Evaluation Chart](https://drive.google.com/file/d/1C1W-OEKyRdZaZwsso4RaIJQAAi9Pb_Sc/view?usp=drive_link)
+- 🔄 **Rollout Statistics:** [View Rollout Analysis](https://drive.google.com/file/d/1Rl4wuWV1ZDKOg_8SyjlIM4oH0xm6Fx3c/view?usp=drive_link)
+- ⏱️ **Training Time/Performance:** [View Time Training](https://drive.google.com/file/d/12HenuA8LBgAJv0C7ATbW0LeX1Vx0nu3C/view?usp=drive_link)
+
+---
+
+## 📝 License
+
+Distributed under the MIT License. See `LICENSE` for more information.

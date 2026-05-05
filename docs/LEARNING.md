@@ -1,6 +1,6 @@
 # 📚 Architecture & Machine Learning Knowledge Base: Snake DQN Project
 
-**Topics:** Reinforcement Learning (RL), Operating System Performance Optimization, Reward Shaping Mathematics
+**Topics:** Reinforcement Learning (RL), Operating System Performance Optimization, Reward Shaping Mathematics, MLOps Visualization Reliability
 
 > **About this document:** This knowledge base was synthesized from the full design, debugging, and system analysis lifecycle of a Snake DQN project. It is formatted as an Engineering Wiki and is suitable for storage in Obsidian, Notion, or as a `LEARNING.md` file in your GitHub repository.
 
@@ -13,7 +13,8 @@
 3. [Architectural Vulnerabilities & Fixes](#part-3-architectural-vulnerabilities--fixes)
 4. [The Mathematics of Reward Shaping](#part-4-the-mathematics-of-reward-shaping)
 5. [Resume Training in MLOps Pipelines](#part-5-resume-training-in-mlops-pipelines)
-6. [Summary & Key Takeaways](#summary--key-takeaways)
+6. [UI Rendering Failure Analysis (Matplotlib Backend Trap)](#part-6-ui-rendering-failure-analysis-matplotlib-backend-trap)
+7. [Summary & Key Takeaways](#summary--key-takeaways)
 
 ---
 
@@ -328,6 +329,101 @@ flowchart TB
         R3 --> R4["Faster policy refinement"]
     end
 ```
+
+---
+
+## Part 6: UI Rendering Failure Analysis (Matplotlib Backend Trap)
+
+This section documents a real production debugging incident from `--play` mode where users reported:
+
+- no visible UI window,
+- no obvious renderer failure message,
+- confusion between Bevy rendering issues and Python rendering issues.
+
+### 6.1 Symptom Profile
+
+In `--play --play-renderer python`, the process started but no usable game window appeared.  
+In some runs, logs looked valid, yet visual output was absent or silently non-interactive.
+
+### 6.2 Root Cause
+
+The renderer backend detection used this flawed logic:
+
+```python
+if "agg" in matplotlib.get_backend().lower():
+    # treat as non-interactive
+```
+
+This creates a false positive:
+
+- `QtAgg` is an **interactive** backend.
+- `"agg" in "qtagg"` evaluates to `True`.
+- The script incorrectly classified `QtAgg` as non-interactive and raised an error.
+
+### 6.3 Why the Bug Happened
+
+The bug is a classic **substring classification error**:
+
+1. Backend identity was treated as a free-text token.
+2. Matching logic used partial containment instead of exact backend classification.
+3. Names like `QtAgg`, `TkAgg`, `GTK3Agg` share the suffix `Agg`, but are interactive.
+
+### 6.4 System Impact
+
+This bug had three operational impacts:
+
+1. **Review blockage:** engineers could not visually validate model behavior in play mode.
+2. **Misleading diagnosis path:** teams suspected Bevy/Winit first, while Python backend selection was also broken.
+3. **MLOps friction:** checkpoint evaluation loops became slower because qualitative validation was unreliable.
+
+### 6.5 The Fix
+
+The fix was implemented in three parts:
+
+1. **Exact backend classification**
+   - Use Matplotlib backend registry (`NON_INTERACTIVE`) with exact-name matching.
+   - Avoid substring checks entirely.
+2. **Deterministic fallback order**
+   - Try: `QtAgg` → `TkAgg` → `GTK3Agg`.
+3. **Explicit observability logs**
+   - Emit startup logs:
+     - `[UI Renderer] Mode: python`
+     - `[UI Renderer] Active backend: QtAgg`
+
+```mermaid
+flowchart TD
+    A["Start --play --play-renderer python"] --> B["Detect backend"]
+    B --> C{"Old logic:\n'agg' in backend?"}
+    C -->|backend = QtAgg| D["False positive -> reject renderer"]
+    D --> E["No usable UI / misleading failure"]
+
+    B --> F{"New logic:\nexact backend classification"}
+    F -->|interactive backend| G["Open UI successfully"]
+    F -->|non-interactive backend| H["Try fallback order:\nQtAgg -> TkAgg -> GTK3Agg"]
+    H --> I{"Any interactive backend available?"}
+    I -->|Yes| G
+    I -->|No| J["Fail fast with actionable error message"]
+```
+
+### 6.6 Resolution Checklist
+
+Use this checklist when UI does not appear:
+
+| Check | Command / Signal | Expected |
+| --- | --- | --- |
+| Renderer mode | CLI args | `--play-renderer python` for stable review |
+| Backend log | stdout | `[UI Renderer] Active backend: QtAgg` (or TkAgg/GTK3Agg) |
+| Backend probe | `python -c "import matplotlib; print(matplotlib.get_backend())"` | Interactive backend name |
+| Missing GUI libs | install deps | `pip install PyQt6` (recommended) |
+| Forced backend run | env override | `MPLBACKEND=QtAgg ... --play-renderer python` |
+
+### 6.7 Engineering Takeaway
+
+This incident reinforces an important reliability rule:
+
+> **Never classify runtime backends with substring heuristics when canonical registries are available.**
+
+In ML tooling, small infrastructure bugs (UI backend checks, path resolution, callback timing) can block model review as effectively as algorithmic bugs.
 
 ---
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
+import matplotlib
+import numpy as np
 import torch as th
 import torch.nn as nn
 from gymnasium import spaces
@@ -13,6 +16,23 @@ from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+
+
+def _load_non_interactive_backends() -> set[str]:
+    try:
+        from matplotlib.backends import BackendFilter, backend_registry
+
+        return {
+            backend.lower()
+            for backend in backend_registry.list_builtin(
+                BackendFilter.NON_INTERACTIVE
+            )
+        }
+    except Exception:
+        return {backend.lower() for backend in matplotlib.rcsetup.non_interactive_bk}
+
+
+NON_INTERACTIVE_BACKENDS = _load_non_interactive_backends()
 
 
 class SnakeCNN(BaseFeaturesExtractor):
@@ -197,22 +217,120 @@ def train(args: argparse.Namespace) -> None:
 
 def play(args: argparse.Namespace) -> None:
     model_path = resolve_model_path(args, context="play")
+    use_bevy_renderer = args.play_renderer == "bevy"
 
     env = SnakeEnv(
         width=args.width,
         height=args.height,
         max_steps=args.max_steps,
-        render=True,
+        render=use_bevy_renderer,
         seed=args.seed,
     )
     model = DQN.load(str(model_path))
 
     obs, _ = env.reset()
+    fig: Any = None
+    image_artist: Any = None
+    plt_module: Any = None
+    print(
+        f"[UI Renderer] Mode: {'bevy' if use_bevy_renderer else 'python'}",
+        flush=True,
+    )
+    if not use_bevy_renderer:
+        plt_module = get_interactive_pyplot()
+        print(
+            f"[UI Renderer] Active backend: {matplotlib.get_backend()}",
+            flush=True,
+        )
+        plt_module.ion()
+        fig, ax = plt_module.subplots(figsize=(6, 6))
+        image_artist = ax.imshow(onehot_to_rgb(obs), interpolation="nearest")
+        ax.set_title("Snake DQN Play (Python Renderer)")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        fig.tight_layout()
+        plt_module.show(block=False)
+
     while True:
         action, _ = model.predict(obs, deterministic=True)
         obs, _, terminated, truncated, _ = env.step(int(action))
+
+        if use_bevy_renderer:
+            env.render()
+            time.sleep(1.0 / 60.0)
+        else:
+            if (
+                fig is None
+                or image_artist is None
+                or plt_module is None
+                or not plt_module.fignum_exists(fig.number)
+            ):
+                break
+            image_artist.set_data(onehot_to_rgb(obs))
+            fig.canvas.draw_idle()
+            plt_module.pause(1.0 / 30.0)
+
         if terminated or truncated:
             obs, _ = env.reset()
+
+    env.close()
+    if fig is not None and plt_module is not None:
+        plt_module.ioff()
+        plt_module.close(fig)
+
+
+def onehot_to_rgb(observation: np.ndarray) -> np.ndarray:
+    """Convert one-hot [4, H, W] grid to RGB image for interactive preview."""
+    if observation.shape[0] != 4:
+        raise ValueError(
+            f"Expected one-hot observation with 4 channels, got {observation.shape}"
+        )
+
+    empty = observation[0] == 1
+    head = observation[1] == 1
+    body = observation[2] == 1
+    food = observation[3] == 1
+
+    height, width = observation.shape[1], observation.shape[2]
+    rgb = np.zeros((height, width, 3), dtype=np.uint8)
+    rgb[empty] = np.array([20, 20, 20], dtype=np.uint8)
+    rgb[body] = np.array([30, 120, 30], dtype=np.uint8)
+    rgb[head] = np.array([80, 240, 80], dtype=np.uint8)
+    rgb[food] = np.array([230, 40, 40], dtype=np.uint8)
+    return rgb
+
+
+def get_interactive_pyplot() -> Any:
+    """Return pyplot configured with an interactive backend, or fail fast."""
+    current_backend = matplotlib.get_backend()
+    if is_non_interactive_backend(current_backend):
+        for candidate in ("QtAgg", "TkAgg", "GTK3Agg"):
+            try:
+                matplotlib.use(candidate, force=True)
+                if not is_non_interactive_backend(matplotlib.get_backend()):
+                    break
+            except Exception:
+                continue
+
+    import matplotlib.pyplot as plt
+
+    active_backend = matplotlib.get_backend()
+    if is_non_interactive_backend(active_backend):
+        raise RuntimeError(
+            "Python renderer requires an interactive matplotlib backend, but current backend is "
+            f"'{active_backend}'. Install a GUI backend (e.g. PyQt6 or python-tk), "
+            "or run with '--play-renderer bevy'."
+        )
+
+    return plt
+
+
+def is_non_interactive_backend(backend_name: str) -> bool:
+    normalized = backend_name.lower()
+    if normalized.startswith("module://"):
+        # Notebook/inline backends are not suitable for desktop play previews.
+        return True
+    return normalized in NON_INTERACTIVE_BACKENDS
 
 
 def parse_args() -> argparse.Namespace:
@@ -276,6 +394,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Checkpoint path for --play/--resume. Defaults to ./models/best_model/best_model.zip",
+    )
+    parser.add_argument(
+        "--play-renderer",
+        choices=("python", "bevy"),
+        default="python",
+        help="Renderer backend for --play mode. Use 'python' for stable UI with manual-tick envs.",
     )
 
     args = parser.parse_args()
