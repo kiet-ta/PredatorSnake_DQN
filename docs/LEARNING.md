@@ -12,7 +12,8 @@
 2. [Decoding TensorBoard — Reading System Health](#part-2-decoding-tensorboard--reading-system-health)
 3. [Architectural Vulnerabilities & Fixes](#part-3-architectural-vulnerabilities--fixes)
 4. [The Mathematics of Reward Shaping](#part-4-the-mathematics-of-reward-shaping)
-5. [Summary & Key Takeaways](#summary--key-takeaways)
+5. [Resume Training in MLOps Pipelines](#part-5-resume-training-in-mlops-pipelines)
+6. [Summary & Key Takeaways](#summary--key-takeaways)
 
 ---
 
@@ -215,15 +216,131 @@ The agent only "sees" 67 cents of a dollar that is 40 steps away. If the travel 
 
 ---
 
+## Part 5: Resume Training in MLOps Pipelines
+
+> **Mermaid note:** The diagrams in this section are written with Mermaid `v11.14.0`-compatible syntax.
+
+Resume training is the operational bridge between experimentation and production-grade ML workflows.  
+In this project, it prevents compute waste and preserves policy quality between sessions.
+
+### 5.1 What "Weights" Actually Are
+
+In DQN, the model "brain" is a neural network (CNN + MLP head) that outputs Q-values.  
+Its **weights** are learned parameters (matrices/tensors) that encode spatial patterns such as:
+
+- where danger usually appears (walls/body proximity),
+- where reward opportunities appear (food trajectories),
+- which local board topologies are safe vs. fatal.
+
+When we say "resume training", we mean: **start from previously learned weights instead of random initialization**.
+
+### 5.2 Why Resume Works (and Why It Can Still Fail)
+
+`DQN.load(...)` restores the trained policy/target networks and optimizer/hyperparameter state from the `.zip` checkpoint.  
+This gives the agent a strong prior policy immediately.
+
+However, for off-policy algorithms, the **Replay Buffer is not implicitly restored in this pipeline**.  
+So after loading, the agent has a smart policy but fresh experience memory. This creates a short adaptation phase that must be tuned.
+
+```mermaid
+flowchart LR
+    A["Previous Training Run"] --> B["best_model.zip"]
+    B --> C["DQN.load(...)"]
+    C --> D["Restored network weights (policy + target)"]
+    C --> E["Restored algorithm config/state"]
+    C --> F["New runtime env + fresh replay collection"]
+    D & E & F --> G["Resume learning with continuity"]
+```
+
+### 5.3 Why We Override Hyperparameters on Resume
+
+During fresh training, high exploration and long warmup are healthy:
+- `exploration_initial_eps = 1.0`
+- `learning_starts = 10_000`
+
+During resume, that is too conservative and wastes compute.  
+So we intentionally inject `custom_objects` at load time:
+
+- `exploration_initial_eps = 0.1`
+- `exploration_final_eps = 0.01`
+- `learning_starts = 1_000`
+
+This keeps some exploration (to avoid local overfitting) but dramatically reduces "cold-start" delay after checkpoint reload.
+
+```mermaid
+sequenceDiagram
+    participant CLI as CLI (--resume)
+    participant Script as train_sb3.py
+    participant FS as Filesystem
+    participant SB3 as Stable-Baselines3
+    participant Env as SubprocVecEnv
+
+    CLI->>Script: launch with --resume [--model-path optional]
+    Script->>FS: resolve path (model-path or default best_model.zip)
+    FS-->>Script: checkpoint path exists
+    Script->>SB3: DQN.load(path, env, custom_objects)
+    Note right of SB3: custom_objects overrides\nexploration + learning_starts
+    SB3-->>Script: loaded model with restored weights
+    Script->>Env: collect transitions
+    Script->>SB3: model.learn(...)
+    SB3-->>FS: save new checkpoints + final model
+```
+
+### 5.4 Operational Routing Logic (Train / Resume / Play)
+
+The script now supports 3 production-friendly modes:
+
+1. `--train`: train from scratch.
+2. `--resume`: continue from checkpoint with resume-tuned exploration/warmup.
+3. `--play`: deterministic inference with rendering.
+
+Safety constraints:
+- `--play` and `--resume` are mutually exclusive.
+- Missing checkpoint path fails fast with a clear `FileNotFoundError`.
+- If `--model-path` is not provided, fallback is `./models/best_model/best_model.zip` (under `--model-dir`).
+
+### 5.5 Review Checklist for Resume Reliability
+
+Use this checklist to validate no silent regressions:
+
+| Check | Expected Signal |
+| --- | --- |
+| Path resolution | Correctly prefers `--model-path`, then fallback default |
+| Missing checkpoint | Immediate, explicit `FileNotFoundError` |
+| Resume exploration | Starts lower than scratch (`0.1` vs `1.0`) |
+| Warmup behavior | Learning begins after ~`1,000` steps, not `10,000` |
+| TensorBoard continuity | New run logs under same experiment family with improved early stability |
+| Eval callback | `best_model.zip` keeps updating if resumed policy improves |
+
+### 5.6 Mental Model: Scratch vs Resume
+
+```mermaid
+flowchart TB
+    subgraph Scratch["From Scratch"]
+        S1["Random init weights"] --> S2["High epsilon exploration"]
+        S2 --> S3["Long warmup (learning_starts=10k)"]
+        S3 --> S4["Slow emergence of useful policy"]
+    end
+
+    subgraph Resume["Resume Training"]
+        R1["Load trained weights from best_model.zip"] --> R2["Low epsilon exploration (0.1 -> 0.01)"]
+        R2 --> R3["Short warmup (learning_starts=1k)"]
+        R3 --> R4["Faster policy refinement"]
+    end
+```
+
+---
+
 ## Summary & Key Takeaways
 
-Successful Reinforcement Learning training requires the **perfect intersection of three engineering pillars**:
+Successful Reinforcement Learning training in real systems requires the **intersection of four engineering pillars**:
 
 | Pillar                  | What It Covers                                             | Key Principle                                                          |
 | ----------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
 | **Data Plane**          | OS-level efficiency, thread management, zero-copy transfer | Match thread count to available cores; avoid multiplicative contention |
 | **Data Representation** | Input encoding for the neural network                      | One-hot encode categorical entities; never use raw ordinal integers    |
 | **Reward Mathematics**  | The behavioral incentive structure                         | All three reward laws must hold simultaneously, or behavior breaks     |
+| **MLOps Continuity**    | Checkpointing, resume strategy, safe routing               | Restore weights, retune exploration/warmup, and fail fast on bad paths |
 
 The most important meta-lesson is this: **AI behavior is an engineering output, not a mystery.** Every pathology — suicidal agents, cowards, hackers — has a precise mathematical cause traceable back to a design decision. Understanding the system at this level is what separates a systems architect from a practitioner who just runs training scripts.
 

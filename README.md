@@ -1,58 +1,114 @@
 # PredatorSnake_DQN
 
-High-performance custom Snake reinforcement learning environment:
+[![Fast with Rust](https://img.shields.io/badge/Performance-Rust-orange.svg)](https://www.rust-lang.org/)
+[![RL with SB3](https://img.shields.io/badge/RL-Stable--Baselines3-blue.svg)](https://stable-baselines3.readthedocs.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-- **Data Plane**: Rust + Bevy ECS simulation.
-- **Control Plane**: Python Gymnasium wrapper for Stable-Baselines3.
-- **Bridge**: PyO3 + rust-numpy module built by maturin.
+High-performance custom Snake reinforcement learning environment with a **Rust Engine (Bevy ECS)** and **Stable-Baselines3 (DQN)** control plane.
 
-## Build and install
+---
+
+## 🏗️ Architecture
+
+- **Data Plane (Rust):** High-performance game logic, collision detection, and reward calculation using Bevy ECS.
+- **Control Plane (Python):** Deep Q-Network (DQN) training and evaluation.
+- **Bridge:** Zero-copy observation transfer via PyO3 and rust-numpy.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Requirements
+
+- Rust (latest stable)
+- Python 3.10+
+- [Maturin](https://github.com/PyO3/maturin)
+
+### 2. Build and Install
 
 ```bash
+# Install maturin if not already present
+pip install maturin
+
+# Compile Rust core and install into your python environment
 maturin develop --release
 ```
 
-## Python usage
+---
 
-```python
-from snake_env import SnakeEnv
+## 🧠 Training Guide
 
-env = SnakeEnv(width=20, height=20, max_steps=1000, render=False, seed=42)
-obs, info = env.reset()
-obs, reward, terminated, truncated, info = env.step(0)  # 0=Straight, 1=Left, 2=Right
+### A. Training from Scratch
+
+Run the following command to start a new training session:
+
+```bash
+python examples/train_sb3.py --train --n-envs 8 --total-timesteps 5000000 --exploration-fraction 0.2 --learning-rate 0.0001
 ```
 
-## Deterministic tick pipeline
+**Argument Breakdown:**
 
-Each `env.step(action)` triggers exactly one Bevy update cycle with strict ordering:
+- `--train`: Activates training mode.
+- `--n-envs 8`: Spawns 8 parallel environment workers. This utilizes multiple CPU cores to collect experience 8x faster.
+- `--total-timesteps 5000000`: The total number of steps the agent will take. 5M is usually enough for complex strategic emergence.
+- `--exploration-fraction 0.2`: The agent will spend 20% of the total time (1M steps) primarily exploring (taking random actions) to discover rewards.
+- `--learning-rate 0.0001`: The step size for neural network weight updates. A small value ensures stable convergence.
 
-1. `apply_action_system`
-2. `move_system`
-3. `resolve_step_system` (eat/collision/reward/termination)
-4. `write_observation_system`
+### B. Resuming Training
 
-This order is enforced with Bevy `.chain()`.
+To continue training from a saved checkpoint:
 
-## Headless threading model
+```bash
+python examples/train_sb3.py --resume --model-path ./models/best_model/best_model.zip --total-timesteps 1000000
+```
 
-When `render=False`, Bevy is configured with a single-thread task pool. This avoids thread oversubscription when Python scales out with `SubprocVecEnv`.
+_Note: Resuming automatically adjusts exploration parameters to focus on fine-tuning._
 
-## Observation and spaces
+---
 
-- Observation: `numpy.ndarray` `uint8` one-hot shape `[4, H, W]`
-  - channel `0`: empty
-  - channel `1`: snake head
-  - channel `2`: snake body
-  - channel `3`: food
-- Action space: `Discrete(3)` relative controls:
-  - `0`: Straight
-  - `1`: TurnLeft
-  - `2`: TurnRight
+## 📊 Evaluation & Monitoring
 
-## Rewards and termination
+### 1. Watch the AI Play (Rendering)
 
-- `+1.0` when food is eaten
-- `-1.0` on collision death
-- `-0.01` living penalty every step
-- `terminated=True` on collision
-- `truncated=True` when `max_steps` is reached
+To visualize the agent's performance after training:
+
+```bash
+python examples/train_sb3.py --play --model-path ./models/best_model/best_model.zip
+```
+
+### 2. Monitor with TensorBoard
+
+Track metrics like `mean_reward`, `loss`, and `episode_length` in real-time:
+
+```bash
+tensorboard --logdir ./tensorboard/
+```
+
+Then visit: `http://localhost:6006` in your browser.
+
+---
+
+## 🛠️ Technical Details
+
+### Observation Space
+
+The model receives a 4-channel one-hot encoded tensor `[4, H, W]`:
+
+- **Channel 0:** Empty space.
+- **Channel 1:** Snake head.
+- **Channel 2:** Snake body.
+- **Channel 3:** Food.
+
+### Reward Signal
+
+- **+1.0**: Eating food.
+- **-1.0**: Collision (Death).
+- **-0.01**: Step penalty (Encourages efficiency).
+
+### Action Space
+
+`Discrete(3)` relative controls:
+
+- `0`: Straight
+- `1`: Turn Left
+- `2`: Turn Right

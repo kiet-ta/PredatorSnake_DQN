@@ -65,6 +65,18 @@ def make_env(
     return _init
 
 
+def resolve_model_path(args: argparse.Namespace, context: str) -> Path:
+    """Resolve model path for play/resume and fail fast with clear guidance."""
+    default_best_model_path = Path(args.model_dir) / "best_model" / "best_model.zip"
+    model_path = Path(args.model_path) if args.model_path else default_best_model_path
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Cannot {context}: model file not found at '{model_path}'. "
+            "Provide --model-path or train first to generate a checkpoint."
+        )
+    return model_path
+
+
 def train(args: argparse.Namespace) -> None:
     model_dir = Path(args.model_dir)
     log_dir = Path(args.log_dir)
@@ -130,53 +142,61 @@ def train(args: argparse.Namespace) -> None:
         name_prefix="snake_dqn",
     )
 
-    model = DQN(
-        policy="CnnPolicy",
-        env=train_env,
-        learning_rate=args.learning_rate,
-        buffer_size=args.buffer_size,
-        learning_starts=args.learning_starts,
-        batch_size=args.batch_size,
-        gamma=args.gamma,
-        tau=1.0,
-        train_freq=args.train_freq,
-        gradient_steps=args.gradient_steps,
-        target_update_interval=args.target_update_interval,
-        exploration_fraction=args.exploration_fraction,
-        exploration_initial_eps=args.exploration_initial_eps,
-        exploration_final_eps=args.exploration_final_eps,
-        policy_kwargs={
-            "normalize_images": False,
-            "features_extractor_class": SnakeCNN,
-            "features_extractor_kwargs": {"features_dim": args.features_dim},
-        },
-        tensorboard_log=str(tensorboard_dir),
-        verbose=1,
-        seed=args.seed,
-    )
+    try:
+        if args.resume:
+            # Resume from checkpoint with lower exploration and shorter warmup
+            # because replay buffer is empty but policy is already trained.
+            model_path = resolve_model_path(args, context="resume training")
+            model = DQN.load(
+                str(model_path),
+                env=train_env,
+                custom_objects={
+                    "exploration_initial_eps": 0.1,
+                    "exploration_final_eps": 0.01,
+                    "learning_starts": 1_000,
+                },
+            )
+            model.tensorboard_log = str(tensorboard_dir)
+            model.verbose = 1
+        else:
+            model = DQN(
+                policy="CnnPolicy",
+                env=train_env,
+                learning_rate=args.learning_rate,
+                buffer_size=args.buffer_size,
+                learning_starts=args.learning_starts,
+                batch_size=args.batch_size,
+                gamma=args.gamma,
+                tau=1.0,
+                train_freq=args.train_freq,
+                gradient_steps=args.gradient_steps,
+                target_update_interval=args.target_update_interval,
+                exploration_fraction=args.exploration_fraction,
+                exploration_initial_eps=args.exploration_initial_eps,
+                exploration_final_eps=args.exploration_final_eps,
+                policy_kwargs={
+                    "normalize_images": False,
+                    "features_extractor_class": SnakeCNN,
+                    "features_extractor_kwargs": {"features_dim": args.features_dim},
+                },
+                tensorboard_log=str(tensorboard_dir),
+                verbose=1,
+                seed=args.seed,
+            )
 
-    model.learn(
-        total_timesteps=args.total_timesteps,
-        callback=[eval_callback, checkpoint_callback],
-        tb_log_name="snake_dqn",
-    )
-    model.save(str(final_model_path))
-
-    train_env.close()
-    eval_env.close()
+        model.learn(
+            total_timesteps=args.total_timesteps,
+            callback=[eval_callback, checkpoint_callback],
+            tb_log_name="snake_dqn",
+        )
+        model.save(str(final_model_path))
+    finally:
+        train_env.close()
+        eval_env.close()
 
 
 def play(args: argparse.Namespace) -> None:
-    candidate_paths = [
-        Path(args.model_path),
-        Path(args.model_dir) / "best_model" / "best_model.zip",
-    ]
-    model_path = next((path for path in candidate_paths if path.exists()), None)
-    if model_path is None:
-        raise FileNotFoundError(
-            "No model found. Provide --model-path or train first to create "
-            f"{candidate_paths[1]}"
-        )
+    model_path = resolve_model_path(args, context="play")
 
     env = SnakeEnv(
         width=args.width,
@@ -197,10 +217,15 @@ def play(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train or play Snake DQN agent.")
-    mode = parser.add_mutually_exclusive_group(required=True)
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument("--train", action="store_true", help="Run DQN training.")
     mode.add_argument(
         "--play", action="store_true", help="Play with the best saved model."
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from an existing model checkpoint.",
     )
 
     parser.add_argument("--width", type=int, default=20, help="Grid width.")
@@ -249,19 +274,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-path",
         type=str,
-        default="./models/best_model/best_model.zip",
-        help="Model path for --play mode.",
+        default=None,
+        help="Checkpoint path for --play/--resume. Defaults to ./models/best_model/best_model.zip",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.play and args.resume:
+        parser.error("--resume cannot be used with --play.")
+    if not (args.train or args.play or args.resume):
+        parser.error("Choose one mode: --train, --resume, or --play.")
+    return args
 
 
 def main() -> None:
     args = parse_args()
-    if args.train:
-        train(args)
-    else:
+    if args.play:
         play(args)
+    else:
+        train(args)
 
 
 if __name__ == "__main__":
