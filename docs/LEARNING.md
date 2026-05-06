@@ -427,7 +427,102 @@ In ML tooling, small infrastructure bugs (UI backend checks, path resolution, ca
 
 ---
 
-## Summary & Key Takeaways
+## Part 7: AlphaZero Training Pipeline Architecture
+
+The evolution from a standard DQN to an AlphaZero-style architecture represents a shift from value-based reinforcement learning (learning Q-values) to a hybrid approach utilizing Monte Carlo Tree Search (MCTS) guided by a dual-headed neural network. This section covers the Python Intelligence Plane (Phases F, G, and H).
+
+### 7.1 Phase F: The Dual-Headed ResNet Architecture
+
+Since Snake operates on a 2D grid, spatial awareness is critical. A standard Multi-Layer Perceptron (MLP) loses 2D topological information. We utilize a **Convolutional Neural Network (CNN)** enhanced with **Residual Blocks (ResNet)**.
+
+**Why Residual Blocks?**
+Deep CNNs suffer from the vanishing gradient problem. Residual blocks introduce "skip connections" that allow gradients to bypass convolutional layers, enabling the training of much deeper networks. This allows the agent to "see" further across the board.
+
+**The Dual-Head Split:**
+Unlike DQN which outputs $Q(s, a)$ for each action, AlphaZero evaluates a state via two distinct paths:
+1.  **Value Head ($v \in [-1, 1]$):** Evaluates how "good" the current board state is (win/loss likelihood).
+2.  **Policy Head ($\mathbf{p}$):** Outputs a probability distribution over all possible actions (the "intuition" of the network).
+
+```mermaid
+flowchart TD
+    In[("Input Tensor\n[B, 4, Height, Width]\nuint8")] --> Cast["Cast to float32"]
+    Cast --> Conv1["Initial Conv2D (64 channels)"]
+    Conv1 --> ResTower["Residual Tower\n(5x Residual Blocks)"]
+    
+    ResTower --> Split{Split}
+    
+    Split --> PolHead["Policy Head\n(1x1 Conv -> Flatten -> Linear)"]
+    Split --> ValHead["Value Head\n(1x1 Conv -> Flatten -> Linear -> Tanh)"]
+    
+    PolHead --> OutP[("Predicted Policy Logits\nShape: [B, 3]")]
+    ValHead --> OutV[("Predicted Value\nShape: [B, 1]")]
+    
+    style In fill:#f9f,stroke:#333
+    style OutP fill:#bbf,stroke:#333
+    style OutV fill:#bbf,stroke:#333
+```
+
+---
+
+### 7.2 Phase G: Self-Play Data Generation & Temperature
+
+AlphaZero learns exclusively by playing against itself. The engine runs MCTS, guided by the current network, to decide the best moves.
+
+**The Experience Tuple:**
+For every step, we record an experience tuple $(s_t, \pi_t, z_t)$:
+*   $s_t$: The state observation.
+*   $\pi_t$: The target policy (the normalized visit counts of the MCTS root node).
+*   $z_t$: The actual final outcome of the game.
+
+**Outcome Normalization ($z$):**
+In Chess or Go, $z \in \{+1, -1\}$. Snake has a continuous score. To map the score to the $[-1, 1]$ range expected by the value head's `Tanh` activation, we use a non-linear scaling function:
+$$z = \tanh\left(\frac{\text{score}}{30.0}\right)$$
+This provides a strong, bounded gradient signal that scales well whether the snake eats 5 or 50 apples.
+
+**The Exploration Temperature ($\tau$):**
+During self-play, we must balance exploration (trying new moves) with exploitation (playing optimally). This is controlled by the temperature $\tau$ applied to the MCTS visit counts $N(a)$:
+$$P(a) = \frac{N(a)^{1/\tau}}{\sum_b N(b)^{1/\tau}}$$
+*   **Early Game ($\tau = 1.0$):** Action probabilities are directly proportional to visit counts. The agent explores various opening strategies.
+*   **Late Game ($\tau \to 0$):** The agent becomes greedy (`argmax`), ensuring the game finishes optimally.
+
+---
+
+### 7.3 Phase H: The AlphaZero Loss Function
+
+Once the Replay Buffer is filled with self-play data, we sample mini-batches to optimize the neural network. The AlphaZero loss function gracefully combines three objectives:
+
+$$L = (z - v)^2 - \boldsymbol{\pi}^T \log \mathbf{p} + c||\theta||^2$$
+
+1.  **Value Loss (Mean Squared Error):** $(z - v)^2$. Minimizes the error between the network's predicted value $v$ and the actual game outcome $z$. It teaches the network to accurately judge board states.
+2.  **Policy Loss (Cross-Entropy):** $-\boldsymbol{\pi}^T \log \mathbf{p}$. Forces the network's raw predicted probabilities $\mathbf{p}$ to match the high-quality target policy $\boldsymbol{\pi}$ discovered by the computationally expensive MCTS. This transfers the "search knowledge" into the neural network's "intuition".
+3.  **L2 Regularization:** $c||\theta||^2$. Prevents the network from overfitting to specific games. In modern PyTorch, this is handled implicitly and elegantly by using the `AdamW` optimizer, which applies weight decay independently of the gradient updates.
+
+```mermaid
+flowchart LR
+    subgraph Data ["Replay Buffer Sample"]
+        Z["Target Outcome (z)"]
+        PI["Target Policy (π)"]
+    end
+    
+    subgraph Network ["Neural Network Predictions"]
+        V["Predicted Value (v)"]
+        P["Predicted Policy (p)"]
+    end
+    
+    Z & V --> MSE["Mean Squared Error Loss"]
+    PI & P --> CE["Cross Entropy Loss"]
+    
+    MSE & CE --> Sum(("Total Loss\nL = MSE + CE"))
+    Sum --> Optim["AdamW Optimizer\n(Applies L2 Regularization)"]
+    Optim --> Weights["Update Network Weights"]
+    
+    style Sum fill:#ffcccb,stroke:#333
+    style Optim fill:#ccffcc,stroke:#333
+```
+
+---
+
+## Part 8: Summary & Key Takeaways
 
 Successful Reinforcement Learning training in real systems requires the **intersection of four engineering pillars**:
 
@@ -442,4 +537,4 @@ The most important meta-lesson is this: **AI behavior is an engineering output, 
 
 ---
 
-_This document represents knowledge synthesized from real implementation experience. The best architecture documentation is always written during — not after — the process of building and breaking things._
+*This document represents knowledge synthesized from real implementation experience. The best architecture documentation is always written during — not after — the process of building and breaking things.*

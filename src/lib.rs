@@ -12,6 +12,8 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _core(_py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<ffi::env_api::PySnakeCore>()?;
+    module.add_class::<ffi::mcts_api::PyAlphaZeroEngine>()?;
     Ok(())
 }
+pub mod inference_bridge;
 pub mod mcts;

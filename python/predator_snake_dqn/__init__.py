@@ -1,3 +1,3 @@
-from ._core import PySnakeCore
+from ._core import PySnakeCore, PyAlphaZeroEngine
 
-__all__ = ["PySnakeCore"]
+__all__ = ["PySnakeCore", "PyAlphaZeroEngine"]

@@ -19,6 +19,7 @@ tensorboard/
 models/checkpoints/
 models/**/*.zip
 models/eval/
+models/alphazero/
 
 # IDEs
 .vscode/
