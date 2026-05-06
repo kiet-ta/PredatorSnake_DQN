@@ -250,6 +250,12 @@ def play(args: argparse.Namespace) -> None:
         ax.set_yticks([])
         fig.tight_layout()
         plt_module.show(block=False)
+        plt_module.pause(0.05)
+        if not plt_module.fignum_exists(fig.number):
+            raise RuntimeError(
+                "Python renderer could not create a visible window. "
+                "Check display/session permissions or try MPLBACKEND=QtAgg."
+            )
 
     while True:
         action, _ = model.predict(obs, deterministic=True)
@@ -265,13 +271,21 @@ def play(args: argparse.Namespace) -> None:
                 or plt_module is None
                 or not plt_module.fignum_exists(fig.number)
             ):
+                print("[UI Renderer] Window closed. Exiting play loop.", flush=True)
                 break
             image_artist.set_data(onehot_to_rgb(obs))
             fig.canvas.draw_idle()
             plt_module.pause(1.0 / 30.0)
 
         if terminated or truncated:
-            obs, _ = env.reset()
+            print(
+                f"[Play] Endgame reached (terminated={terminated}, truncated={truncated}).",
+                flush=True,
+            )
+            if args.play_loop:
+                obs, _ = env.reset()
+            else:
+                break
 
     env.close()
     if fig is not None and plt_module is not None:
@@ -400,6 +414,11 @@ def parse_args() -> argparse.Namespace:
         choices=("python", "bevy"),
         default="python",
         help="Renderer backend for --play mode. Use 'python' for stable UI with manual-tick envs.",
+    )
+    parser.add_argument(
+        "--play-loop",
+        action="store_true",
+        help="Continue with a new episode after endgame (default: stop at first endgame).",
     )
 
     args = parser.parse_args()
