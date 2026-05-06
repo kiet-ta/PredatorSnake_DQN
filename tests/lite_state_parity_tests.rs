@@ -123,6 +123,9 @@ fn make_pair(width: usize, height: usize, max_steps: u32, seed: u64) -> (App, Sn
         width,
         height,
         max_steps,
+        // Set very high to avoid triggering during parity tests
+        // (ECS environment does not implement starvation)
+        starvation_limit: max_steps * 2,
         seed: Some(seed),
     };
     let lite = SnakeStateLite::new(lite_cfg).expect("valid lite config");

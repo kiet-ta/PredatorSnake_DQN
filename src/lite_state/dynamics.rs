@@ -42,6 +42,8 @@ impl SnakeStateLite {
             terminated: false,
             truncated: false,
             max_steps: config.max_steps,
+            starvation_limit: config.starvation_limit,
+            steps_since_food: 0,
             pending_action: RelativeAction::Straight,
             rng,
         };
@@ -57,6 +59,7 @@ impl SnakeStateLite {
         self.score = 0;
         self.terminated = false;
         self.truncated = false;
+        self.steps_since_food = 0;
         self.pending_action = RelativeAction::Straight;
         self.food = sample_free_position(
             self.width,
@@ -109,6 +112,7 @@ impl SnakeStateLite {
             reward += REWARD_FOOD;
             self.score = self.score.saturating_add(1);
             self.pending_growth = self.pending_growth.saturating_add(1);
+            self.steps_since_food = 0;
             self.food = sample_free_position(
                 self.width,
                 self.height,
@@ -116,6 +120,8 @@ impl SnakeStateLite {
                 self.pending_growth,
                 &mut self.rng,
             );
+        } else {
+            self.steps_since_food = self.steps_since_food.saturating_add(1);
         }
 
         if self.pending_growth > 0 {
@@ -125,7 +131,7 @@ impl SnakeStateLite {
         }
 
         self.steps = self.steps.saturating_add(1);
-        if self.steps >= self.max_steps {
+        if self.steps >= self.max_steps || self.steps_since_food >= self.starvation_limit {
             self.truncated = true;
         }
 
@@ -149,6 +155,28 @@ impl SnakeDynamics for SnakeStateLite {
 
     fn is_terminal(&self) -> bool {
         self.terminated || self.truncated
+    }
+}
+
+impl SnakeStateLite {
+    /// Optimized clone that reuses existing heap allocations (VecDeque buffer).
+    /// Avoids repeated heap allocs during MCTS simulations.
+    pub fn clone_from_root(&mut self, other: &Self) {
+        self.body.clone_from(&other.body);
+        self.width = other.width;
+        self.height = other.height;
+        self.dir = other.dir;
+        self.food = other.food;
+        self.pending_growth = other.pending_growth;
+        self.steps = other.steps;
+        self.score = other.score;
+        self.terminated = other.terminated;
+        self.truncated = other.truncated;
+        self.max_steps = other.max_steps;
+        self.starvation_limit = other.starvation_limit;
+        self.steps_since_food = other.steps_since_food;
+        self.pending_action = other.pending_action;
+        self.rng = other.rng.clone();
     }
 }
 

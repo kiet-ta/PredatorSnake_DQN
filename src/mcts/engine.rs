@@ -51,8 +51,11 @@ impl<E: BatchEvaluator> MCTSEngine<E> {
                 let sims = sims_per_thread + if t == 0 { remainder } else { 0 };
                 let thread_root_state = root_state.clone();
                 s.spawn(move || {
+                    // Pre-allocate scratch state once per thread to reuse VecDeque buffer
+                    let mut scratch_state = thread_root_state.clone();
                     for _ in 0..sims {
-                        self.single_simulation(root_idx, &thread_root_state);
+                        scratch_state.clone_from_root(&thread_root_state);
+                        self.single_simulation(root_idx, &mut scratch_state);
                     }
                 });
             }
@@ -80,9 +83,8 @@ impl<E: BatchEvaluator> MCTSEngine<E> {
         }
     }
 
-    fn single_simulation(&self, root_idx: u32, root_state: &SnakeStateLite) {
+    fn single_simulation(&self, root_idx: u32, current_state: &mut SnakeStateLite) {
         let mut current_idx = root_idx;
-        let mut current_state = root_state.clone();
         let mut search_path = vec![(current_idx, 0.0)];
 
         // Phase 1: Selection
@@ -227,6 +229,7 @@ mod tests {
             width: 10,
             height: 10,
             max_steps: 100,
+            starvation_limit: 200,
             seed: Some(42),
         };
         let state = SnakeStateLite::new(state_config).unwrap();

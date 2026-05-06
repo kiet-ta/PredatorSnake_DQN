@@ -93,13 +93,15 @@ def main():
         "width": args.width,
         "height": args.height,
         "max_steps": args.max_steps,
+        "starvation_limit": args.width * args.height * 2,
         "num_simulations": args.num_simulations,
         "num_threads": args.num_threads,
         "c_puct": args.c_puct,
         "discount_factor": 0.99,
         "virtual_loss": 1.0,
-        "batch_size": 32,
-        "max_batch_wait_us": 5000,
+        # Match batch_size to num_threads to avoid phantom wait timeout
+        "batch_size": args.num_threads,
+        "max_batch_wait_us": 500,
     }
     
     for iteration in range(start_iteration, args.num_iterations):

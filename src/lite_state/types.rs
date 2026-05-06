@@ -12,6 +12,9 @@ pub struct LiteStateConfig {
     pub width: usize,
     pub height: usize,
     pub max_steps: u32,
+    /// Kill episode if snake hasn't eaten for this many steps.
+    /// Default heuristic: `width * height * 2`.
+    pub starvation_limit: u32,
     pub seed: Option<u64>,
 }
 
@@ -36,6 +39,8 @@ pub struct SnakeStateLite {
     pub terminated: bool,
     pub truncated: bool,
     pub max_steps: u32,
+    pub starvation_limit: u32,
+    pub steps_since_food: u32,
     pub pending_action: RelativeAction,
     pub rng: StdRng,
 }
