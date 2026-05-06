@@ -77,6 +77,9 @@ def play_one_game(
         
     return samples
 
+import queue
+import threading
+
 def generate_self_play_data(
     model: AlphaZeroNet,
     num_games: int,
@@ -84,15 +87,37 @@ def generate_self_play_data(
 ) -> List[SelfPlaySample]:
     """
     Generate `num_games` self-play games using a single AlphaZeroNet.
+    Runs the model evaluator in a background thread to prevent GIL deadlocks
+    with the Rust MCTS engine.
     """
+    req_queue = queue.Queue()
+
+    def evaluator_worker():
+        while True:
+            req = req_queue.get()
+            if req is None:
+                break
+            obs, res_queue = req
+            logits, values = model.predict(obs)
+            res_queue.put((logits, values))
+
+    worker = threading.Thread(target=evaluator_worker)
+    worker.start()
+
+    def proxy_predict(obs):
+        res_queue = queue.Queue()
+        req_queue.put((obs, res_queue))
+        return res_queue.get()
+
     all_samples = []
-    
-    # We instantiate a new engine for the loop. 
-    # Or we can reuse one engine per game. Let's reuse.
     engine = PyAlphaZeroEngine(**engine_kwargs)
     
-    for i in range(num_games):
-        samples = play_one_game(engine, model.predict)
-        all_samples.extend(samples)
+    try:
+        for i in range(num_games):
+            samples = play_one_game(engine, proxy_predict)
+            all_samples.extend(samples)
+    finally:
+        req_queue.put(None)
+        worker.join()
         
     return all_samples
