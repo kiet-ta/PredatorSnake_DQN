@@ -97,10 +97,10 @@ impl PyAlphaZeroEngine {
         Ok((obs, info))
     }
 
-    pub fn mcts_step<'py>(
+    pub fn mcts_search<'py>(
         mut slf: PyRefMut<'py, Self>,
         py: Python<'py>,
-    ) -> PyResult<(u8, Bound<'py, PyDict>)> {
+    ) -> PyResult<Bound<'py, PyDict>> {
         if slf.state.is_terminal() {
             return Err(PyRuntimeError::new_err("Episode is terminal; call reset()"));
         }
@@ -144,31 +144,30 @@ impl PyAlphaZeroEngine {
             })
         });
 
-        // Determine best action (argmax of improved policy)
-        let mut best_action = 0;
-        let mut best_prob = -1.0;
-        for i in 0..3 {
-            if result.policy[i] > best_prob {
-                best_prob = result.policy[i];
-                best_action = i as u8;
-            }
-        }
-
-        // Apply action to the actual state
-        use std::convert::TryFrom;
-        let action_enum = crate::domain::action::RelativeAction::try_from(best_action).unwrap();
-        let _outcome = slf.state.apply(action_enum);
-
         let result_dict = PyDict::new_bound(py);
         let policy_list: Vec<f32> = result.policy.to_vec();
         result_dict.set_item("policy", policy_list)?;
         result_dict.set_item("root_value", result.root_value)?;
-        
-        let info_dict = Self::build_info_dict(py, &slf.state)?;
-        result_dict.set_item("info", info_dict)?;
-        result_dict.set_item("is_terminal", slf.state.is_terminal())?;
 
-        Ok((best_action, result_dict))
+        Ok(result_dict)
+    }
+
+    pub fn step<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        action: u8,
+    ) -> PyResult<(Bound<'py, PyArray3<u8>>, Bound<'py, PyDict>, bool)> {
+        use std::convert::TryFrom;
+        let action_enum = crate::domain::action::RelativeAction::try_from(action)
+            .map_err(|_| PyValueError::new_err("Invalid action"))?;
+        
+        slf.state.apply(action_enum);
+
+        let obs = slf.get_observation(py);
+        let info_dict = Self::build_info_dict(py, &slf.state)?;
+        let is_terminal = slf.state.is_terminal();
+
+        Ok((obs, info_dict, is_terminal))
     }
 
     pub fn get_observation<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray3<u8>> {

@@ -1,7 +1,10 @@
 use ndarray::{Array3, Axis};
 
+use bevy::prelude::{Res, ResMut};
+
+#[cfg(feature = "gui")]
 use bevy::prelude::{
-    Camera2dBundle, Color, Commands, Component, Query, Res, ResMut, Sprite, SpriteBundle,
+    Camera2dBundle, Color, Commands, Component, Query, Sprite, SpriteBundle,
     Transform, Vec2,
 };
 
@@ -113,12 +116,14 @@ pub fn write_observation_grid(
     }
 }
 
+#[cfg(feature = "gui")]
 #[derive(Component)]
 pub struct RenderCell {
     pub x: usize,
     pub y: usize,
 }
 
+#[cfg(feature = "gui")]
 pub fn setup_render_scene(mut commands: Commands<'_, '_>, config: Res<'_, EnvConfigResource>) {
     commands.spawn(Camera2dBundle::default());
 
@@ -148,6 +153,7 @@ pub fn setup_render_scene(mut commands: Commands<'_, '_>, config: Res<'_, EnvCon
     }
 }
 
+#[cfg(feature = "gui")]
 pub fn sync_render_scene(
     observation: Res<'_, ObservationBuffer>,
     mut cells: Query<'_, '_, (&RenderCell, &mut Sprite)>,
@@ -170,6 +176,7 @@ pub fn sync_render_scene(
     }
 }
 
+#[cfg(feature = "gui")]
 fn color_for_channels(is_empty: bool, is_head: bool, is_body: bool, is_food: bool) -> Color {
     if is_head {
         Color::srgb(0.2, 0.9, 0.2)

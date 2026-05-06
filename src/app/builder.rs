@@ -1,6 +1,11 @@
 use bevy::{
     core::TaskPoolPlugin,
-    prelude::{App, DefaultPlugins, MinimalPlugins, PluginGroup, TaskPoolOptions, Window},
+    prelude::{App, MinimalPlugins, PluginGroup, TaskPoolOptions},
+};
+
+#[cfg(feature = "gui")]
+use bevy::{
+    prelude::{DefaultPlugins, Window},
     window::{PresentMode, WindowPlugin},
 };
 
@@ -9,20 +14,30 @@ use crate::{app::schedules, domain::config::EnvConfig, ecs::resources};
 pub fn build_app(config: &EnvConfig) -> App {
     let mut app = App::new();
 
-    if config.render {
-        let window_width = (config.width as f32 * 24.0).max(320.0);
-        let window_height = (config.height as f32 * 24.0).max(320.0);
-        app.add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Snake DQN Play".to_string(),
-                resolution: (window_width, window_height).into(),
-                resizable: false,
-                present_mode: PresentMode::AutoVsync,
+    #[cfg(feature = "gui")]
+    {
+        if config.render {
+            let window_width = (config.width as f32 * 24.0).max(320.0);
+            let window_height = (config.height as f32 * 24.0).max(320.0);
+            app.add_plugins(DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Snake DQN Play".to_string(),
+                    resolution: (window_width, window_height).into(),
+                    resizable: false,
+                    present_mode: PresentMode::AutoVsync,
+                    ..Default::default()
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        }));
-    } else {
+            }));
+        } else {
+            app.add_plugins(MinimalPlugins.set(TaskPoolPlugin {
+                task_pool_options: TaskPoolOptions::with_num_threads(1),
+            }));
+        }
+    }
+
+    #[cfg(not(feature = "gui"))]
+    {
         app.add_plugins(MinimalPlugins.set(TaskPoolPlugin {
             task_pool_options: TaskPoolOptions::with_num_threads(1),
         }));

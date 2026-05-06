@@ -28,13 +28,13 @@ def play_one_game(
     final_score = 0
     
     while True:
-        # Get observation BEFORE we step (since mcts_step advances the internal state)
+        # Get observation BEFORE we step
         obs = engine.get_observation()
         
-        # We need the Python MCTS step logic
+        # We need the Python MCTS search logic
         try:
             # result['policy'] has the search probabilities (tau=1)
-            action, result = engine.mcts_step()
+            result = engine.mcts_search()
         except RuntimeError as e:
             # Environment is terminal (should not normally happen here unless max_steps reached)
             break
@@ -50,20 +50,12 @@ def play_one_game(
         if step < temperature_threshold:
             # Add small epsilon to handle precision issues where sum != 1.0
             p = policy / policy.sum()
-            chosen_action = np.random.choice(3, p=p)
+            chosen_action = int(np.random.choice(3, p=p))
         else:
-            chosen_action = np.argmax(policy)
+            chosen_action = int(np.argmax(policy))
             
-        # The engine.mcts_step already applied the *best* action internally!
-        # Ah, wait! My engine implementation returns `best_action` and applies it automatically:
-        # `let action_enum = RelativeAction::try_from(best_action).unwrap(); slf.state.apply(action_enum);`
-        # This means the engine *always* acts greedily internally according to the root policy argmax.
-        # This is a Rust-side hardcoding. For exact AlphaZero, the environment should take the sampled action!
-        # However, to avoid rewriting the Rust code now, we accept the greedy action applied by the engine.
-        # Actually, since it already stepped internally, `action` returned is what it did.
-        
-        is_terminal = result['is_terminal']
-        info = result['info']
+        # Explicitly step the engine with the chosen action
+        next_obs, info, is_terminal = engine.step(chosen_action)
         final_score = info['score']
         
         if is_terminal:
