@@ -256,6 +256,7 @@ flowchart LR
 ### 5.3 Why We Override Hyperparameters on Resume
 
 During fresh training, high exploration and long warmup are healthy:
+
 - `exploration_initial_eps = 1.0`
 - `learning_starts = 10_000`
 
@@ -296,6 +297,7 @@ The script now supports 3 production-friendly modes:
 3. `--play`: deterministic inference with rendering.
 
 Safety constraints:
+
 - `--play` and `--resume` are mutually exclusive.
 - Missing checkpoint path fails fast with a clear `FileNotFoundError`.
 - If `--model-path` is not provided, fallback is `./models/best_model/best_model.zip` (under `--model-dir`).
@@ -304,14 +306,14 @@ Safety constraints:
 
 Use this checklist to validate no silent regressions:
 
-| Check | Expected Signal |
-| --- | --- |
-| Path resolution | Correctly prefers `--model-path`, then fallback default |
-| Missing checkpoint | Immediate, explicit `FileNotFoundError` |
-| Resume exploration | Starts lower than scratch (`0.1` vs `1.0`) |
-| Warmup behavior | Learning begins after ~`1,000` steps, not `10,000` |
+| Check                  | Expected Signal                                                         |
+| ---------------------- | ----------------------------------------------------------------------- |
+| Path resolution        | Correctly prefers `--model-path`, then fallback default                 |
+| Missing checkpoint     | Immediate, explicit `FileNotFoundError`                                 |
+| Resume exploration     | Starts lower than scratch (`0.1` vs `1.0`)                              |
+| Warmup behavior        | Learning begins after ~`1,000` steps, not `10,000`                      |
 | TensorBoard continuity | New run logs under same experiment family with improved early stability |
-| Eval callback | `best_model.zip` keeps updating if resumed policy improves |
+| Eval callback          | `best_model.zip` keeps updating if resumed policy improves              |
 
 ### 5.6 Mental Model: Scratch vs Resume
 
@@ -409,13 +411,13 @@ flowchart TD
 
 Use this checklist when UI does not appear:
 
-| Check | Command / Signal | Expected |
-| --- | --- | --- |
-| Renderer mode | CLI args | `--play-renderer python` for stable review |
-| Backend log | stdout | `[UI Renderer] Active backend: QtAgg` (or TkAgg/GTK3Agg) |
-| Backend probe | `python -c "import matplotlib; print(matplotlib.get_backend())"` | Interactive backend name |
-| Missing GUI libs | install deps | `pip install PyQt6` (recommended) |
-| Forced backend run | env override | `MPLBACKEND=QtAgg ... --play-renderer python` |
+| Check              | Command / Signal                                                 | Expected                                                 |
+| ------------------ | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| Renderer mode      | CLI args                                                         | `--play-renderer python` for stable review               |
+| Backend log        | stdout                                                           | `[UI Renderer] Active backend: QtAgg` (or TkAgg/GTK3Agg) |
+| Backend probe      | `python -c "import matplotlib; print(matplotlib.get_backend())"` | Interactive backend name                                 |
+| Missing GUI libs   | install deps                                                     | `pip install PyQt6` (recommended)                        |
+| Forced backend run | env override                                                     | `MPLBACKEND=QtAgg ... --play-renderer python`            |
 
 ### 6.7 Engineering Takeaway
 
@@ -440,6 +442,7 @@ Deep CNNs suffer from the vanishing gradient problem. Residual blocks introduce 
 
 **The Dual-Head Split:**
 Unlike DQN which outputs $Q(s, a)$ for each action, AlphaZero evaluates a state via two distinct paths:
+
 1.  **Value Head ($v \in [-1, 1]$):** Evaluates how "good" the current board state is (win/loss likelihood).
 2.  **Policy Head ($\mathbf{p}$):** Outputs a probability distribution over all possible actions (the "intuition" of the network).
 
@@ -448,15 +451,15 @@ flowchart TD
     In[("Input Tensor\n[B, 4, Height, Width]\nuint8")] --> Cast["Cast to float32"]
     Cast --> Conv1["Initial Conv2D (64 channels)"]
     Conv1 --> ResTower["Residual Tower\n(5x Residual Blocks)"]
-    
+
     ResTower --> Split{Split}
-    
+
     Split --> PolHead["Policy Head\n(1x1 Conv -> Flatten -> Linear)"]
     Split --> ValHead["Value Head\n(1x1 Conv -> Flatten -> Linear -> Tanh)"]
-    
+
     PolHead --> OutP[("Predicted Policy Logits\nShape: [B, 3]")]
     ValHead --> OutV[("Predicted Value\nShape: [B, 1]")]
-    
+
     style In fill:#f9f,stroke:#333
     style OutP fill:#bbf,stroke:#333
     style OutV fill:#bbf,stroke:#333
@@ -470,9 +473,10 @@ AlphaZero learns exclusively by playing against itself. The engine runs MCTS, gu
 
 **The Experience Tuple:**
 For every step, we record an experience tuple $(s_t, \pi_t, z_t)$:
-*   $s_t$: The state observation.
-*   $\pi_t$: The target policy (the normalized visit counts of the MCTS root node).
-*   $z_t$: The actual final outcome of the game.
+
+- $s_t$: The state observation.
+- $\pi_t$: The target policy (the normalized visit counts of the MCTS root node).
+- $z_t$: The actual final outcome of the game.
 
 **Outcome Normalization ($z$):**
 In Chess or Go, $z \in \{+1, -1\}$. Snake has a continuous score. To map the score to the $[-1, 1]$ range expected by the value head's `Tanh` activation, we use a non-linear scaling function:
@@ -482,8 +486,9 @@ This provides a strong, bounded gradient signal that scales well whether the sna
 **The Exploration Temperature ($\tau$):**
 During self-play, we must balance exploration (trying new moves) with exploitation (playing optimally). This is controlled by the temperature $\tau$ applied to the MCTS visit counts $N(a)$:
 $$P(a) = \frac{N(a)^{1/\tau}}{\sum_b N(b)^{1/\tau}}$$
-*   **Early Game ($\tau = 1.0$):** Action probabilities are directly proportional to visit counts. The agent explores various opening strategies.
-*   **Late Game ($\tau \to 0$):** The agent becomes greedy (`argmax`), ensuring the game finishes optimally.
+
+- **Early Game ($\tau = 1.0$):** Action probabilities are directly proportional to visit counts. The agent explores various opening strategies.
+- **Late Game ($\tau \to 0$):** The agent becomes greedy (`argmax`), ensuring the game finishes optimally.
 
 ---
 
@@ -503,19 +508,19 @@ flowchart LR
         Z["Target Outcome (z)"]
         PI["Target Policy (π)"]
     end
-    
+
     subgraph Network ["Neural Network Predictions"]
         V["Predicted Value (v)"]
         P["Predicted Policy (p)"]
     end
-    
+
     Z & V --> MSE["Mean Squared Error Loss"]
     PI & P --> CE["Cross Entropy Loss"]
-    
+
     MSE & CE --> Sum(("Total Loss\nL = MSE + CE"))
     Sum --> Optim["AdamW Optimizer\n(Applies L2 Regularization)"]
     Optim --> Weights["Update Network Weights"]
-    
+
     style Sum fill:#ffcccb,stroke:#333
     style Optim fill:#ccffcc,stroke:#333
 ```
@@ -537,4 +542,4 @@ The most important meta-lesson is this: **AI behavior is an engineering output, 
 
 ---
 
-*This document represents knowledge synthesized from real implementation experience. The best architecture documentation is always written during — not after — the process of building and breaking things.*
+_This document represents knowledge synthesized from real implementation experience. The best architecture documentation is always written during — not after — the process of building and breaking things._
