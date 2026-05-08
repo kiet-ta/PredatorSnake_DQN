@@ -13,9 +13,9 @@ This repository implements a high-performance Snake RL environment:
 
 Current observation contract is **one-hot**:
 
-- shape: `[4, H, W]`
+- shape: `[5, H, W]`
 - dtype: `uint8`
-- channels: `0=empty, 1=head, 2=body, 3=food`
+- channels: `0=empty, 1=head, 2=body, 3=food, 4=reachable_area`
 
 Action space:
 
@@ -129,7 +129,7 @@ python -m py_compile examples/train_sb3.py python/snake_env/env.py
 
 ## 7) Coding Rules for Agents
 
-1. **Do not break observation/action contracts** (`[4,H,W]`, `Discrete(3)`).
+1. **Do not break observation/action contracts** (`[5,H,W]`, `Discrete(3)`).
 2. **Preserve deterministic behavior** for seeded runs.
 3. **Maintain parity** between `SnakeStateLite` and ECS rules.
 4. **No broad error swallowing**; fail fast with actionable messages.

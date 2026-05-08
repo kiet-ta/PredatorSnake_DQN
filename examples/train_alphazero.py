@@ -69,8 +69,8 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
-    latest_net = AlphaZeroNet(in_channels=4, num_res_blocks=5, channels=64, board_size=args.width).to(device)
-    best_net = AlphaZeroNet(in_channels=4, num_res_blocks=5, channels=64, board_size=args.width).to(device)
+    latest_net = AlphaZeroNet(in_channels=5, num_res_blocks=5, channels=64, board_size=args.width).to(device)
+    best_net = AlphaZeroNet(in_channels=5, num_res_blocks=5, channels=64, board_size=args.width).to(device)
     
     trainer = AlphaZeroTrainer(net=latest_net, lr=args.lr, weight_decay=args.weight_decay, device=device)
     

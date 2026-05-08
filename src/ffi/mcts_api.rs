@@ -6,6 +6,7 @@ use pyo3::{
 };
 
 use crate::{
+    domain::rules::OBS_CHANNELS,
     inference_bridge::{
         bridged_evaluator::BridgedEvaluator,
         coordinator::{Coordinator, CoordinatorConfig},
@@ -206,7 +207,7 @@ impl PyAlphaZeroEngine {
         let mut buffer = vec![0u8; obs_len];
         self.state.encode_onehot_chw(&mut buffer);
 
-        let shape = [4, self.state.height, self.state.width];
+        let shape = [OBS_CHANNELS, self.state.height, self.state.width];
         numpy::PyArray::from_slice_bound(py, &buffer).reshape(shape).unwrap()
     }
 }

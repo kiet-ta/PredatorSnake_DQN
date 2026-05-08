@@ -8,7 +8,7 @@ from typing import List, Tuple
 @dataclass
 class SelfPlaySample:
     """A single training sample from self-play."""
-    observation: np.ndarray  # [4, H, W] uint8
+    observation: np.ndarray  # [5, H, W] uint8 (empty, head, body, food, reachable)
     target_policy: np.ndarray  # [3] float32 (MCTS visit distribution)
     outcome: float  # z in [-1, 1]
 

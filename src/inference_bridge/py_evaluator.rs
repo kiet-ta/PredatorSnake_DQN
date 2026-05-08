@@ -2,6 +2,7 @@ use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use super::coordinator::InferenceBackend;
+use crate::domain::rules::OBS_CHANNELS;
 
 /// A PyO3-based backend that invokes a Python callable for evaluation.
 ///
@@ -17,9 +18,8 @@ pub struct PyO3Backend {
 impl InferenceBackend for PyO3Backend {
     fn infer(&mut self, batch_obs: &[u8], batch_size: usize) -> (Vec<f32>, Vec<[f32; 3]>) {
         Python::with_gil(|py| {
-            // Reconstruct the shape: [B, 4, H, W]
-            // We give Python a flattened 1D array or reshaped 4D array of uint8.
-            let shape = [batch_size, 4, self.height, self.width];
+            // Reconstruct the shape: [B, OBS_CHANNELS, H, W]
+            let shape = [batch_size, OBS_CHANNELS, self.height, self.width];
             
             // Create a numpy array directly from the slice. 
             // `IntoPyArray::into_pyarray` does a copy if we use `into_pyarray_bound` or `to_pyarray`.

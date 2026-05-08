@@ -3,11 +3,12 @@ use crate::domain::{
     state::{Position, SnakeState},
 };
 
-pub const OBS_CHANNELS: usize = 4;
+pub const OBS_CHANNELS: usize = 5;
 pub const CHANNEL_EMPTY: usize = 0;
 pub const CHANNEL_HEAD: usize = 1;
 pub const CHANNEL_BODY: usize = 2;
 pub const CHANNEL_FOOD: usize = 3;
+pub const CHANNEL_REACHABLE: usize = 4;
 
 pub const REWARD_FOOD: f32 = 10.0;
 pub const REWARD_DEATH: f32 = -10.0;

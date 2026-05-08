@@ -38,7 +38,7 @@ class SnakeEnv(gym.Env[np.ndarray, int]):
         self.observation_space = spaces.Box(
             low=np.uint8(0),
             high=np.uint8(1),
-            shape=(4, height, width),
+            shape=(5, height, width),
             dtype=np.uint8,
         )
 

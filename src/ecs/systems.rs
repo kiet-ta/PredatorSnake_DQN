@@ -1,4 +1,5 @@
 use ndarray::{Array3, Axis};
+use std::collections::VecDeque;
 
 use bevy::prelude::{Res, ResMut};
 
@@ -11,8 +12,9 @@ use bevy::prelude::{
 use crate::{
     domain::{
         rules::{
-            CHANNEL_BODY, CHANNEL_EMPTY, CHANNEL_FOOD, CHANNEL_HEAD, OBS_CHANNELS, REWARD_DEATH,
-            REWARD_FOOD, REWARD_STEP, collides_with_body, is_out_of_bounds,
+            CHANNEL_BODY, CHANNEL_EMPTY, CHANNEL_FOOD, CHANNEL_HEAD, CHANNEL_REACHABLE,
+            OBS_CHANNELS, REWARD_DEATH, REWARD_FOOD, REWARD_STEP, collides_with_body,
+            is_out_of_bounds,
         },
         state::Position,
     },
@@ -113,6 +115,61 @@ pub fn write_observation_grid(
 
         grid[(channel, y, x)] = 1;
         grid[(CHANNEL_EMPTY, y, x)] = 0;
+    }
+
+    // Channel 4: Reachable area via BFS flood-fill from head
+    write_reachable_channel(grid, config.width, config.height, snake);
+}
+
+/// BFS flood-fill from snake head, writing 1s into CHANNEL_REACHABLE.
+/// Mirrors the lite_state encoding logic exactly for parity.
+fn write_reachable_channel(
+    grid: &mut Array3<u8>,
+    width: usize,
+    height: usize,
+    snake: &crate::domain::state::SnakeState,
+) {
+    if snake.body.is_empty() {
+        return;
+    }
+
+    let head = snake.head();
+
+    // Build occupancy grid: true = blocked (body segment)
+    let mut blocked = vec![false; width * height];
+    for seg in &snake.body {
+        if seg.x >= 0 && seg.y >= 0 && (seg.x as usize) < width && (seg.y as usize) < height {
+            blocked[seg.y as usize * width + seg.x as usize] = true;
+        }
+    }
+
+    let mut visited = vec![false; width * height];
+    let mut queue = VecDeque::new();
+
+    let head_flat = head.y as usize * width + head.x as usize;
+    visited[head_flat] = true;
+    queue.push_back((head.x as usize, head.y as usize));
+    grid[(CHANNEL_REACHABLE, head.y as usize, head.x as usize)] = 1;
+
+    while let Some((cx, cy)) = queue.pop_front() {
+        for (dx, dy) in &[(0i32, -1i32), (0, 1), (-1, 0), (1, 0)] {
+            let nx = cx as i32 + dx;
+            let ny = cy as i32 + dy;
+
+            if nx < 0 || ny < 0 || nx as usize >= width || ny as usize >= height {
+                continue;
+            }
+
+            let nux = nx as usize;
+            let nuy = ny as usize;
+            let flat = nuy * width + nux;
+
+            if !visited[flat] && !blocked[flat] {
+                visited[flat] = true;
+                queue.push_back((nux, nuy));
+                grid[(CHANNEL_REACHABLE, nuy, nux)] = 1;
+            }
+        }
     }
 }
 

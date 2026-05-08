@@ -92,7 +92,7 @@ impl<E: BatchEvaluator> MCTSEngine<E> {
             let next_idx = self.select_best_child(current_idx);
             
             // Apply virtual loss
-            self.arena.get(next_idx).virtual_loss_active.fetch_add(1, Ordering::Relaxed);
+            self.arena.get(next_idx).virtual_loss_active.fetch_add(1, Ordering::AcqRel);
             
             current_idx = next_idx;
             
@@ -195,7 +195,7 @@ impl<E: BatchEvaluator> MCTSEngine<E> {
             let node = self.arena.get(node_idx);
             
             if node_idx != root_idx {
-                node.virtual_loss_active.fetch_sub(1, Ordering::Relaxed);
+                node.virtual_loss_active.fetch_sub(1, Ordering::AcqRel);
             }
             
             node.add_visit();

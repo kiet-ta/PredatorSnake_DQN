@@ -294,10 +294,10 @@ def play(args: argparse.Namespace) -> None:
 
 
 def onehot_to_rgb(observation: np.ndarray) -> np.ndarray:
-    """Convert one-hot [4, H, W] grid to RGB image for interactive preview."""
-    if observation.shape[0] != 4:
+    """Convert one-hot [5, H, W] grid to RGB image for interactive preview."""
+    if observation.shape[0] != 5:
         raise ValueError(
-            f"Expected one-hot observation with 4 channels, got {observation.shape}"
+            f"Expected one-hot observation with 5 channels, got {observation.shape}"
         )
 
     empty = observation[0] == 1

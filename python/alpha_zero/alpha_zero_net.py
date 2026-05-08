@@ -33,10 +33,11 @@ class ResidualBlock(nn.Module):
 class AlphaZeroNet(nn.Module):
     """
     Dual-headed ResNet architecture for AlphaZero Snake.
-    Input:  [B, 4, H, W] tensor (uint8 casted to float32)
+    Input:  [B, 5, H, W] tensor (uint8 casted to float32)
+    Channels: 0=empty, 1=head, 2=body, 3=food, 4=reachable_area
     Output: logits [B, 3], value [B, 1]
     """
-    def __init__(self, in_channels: int = 4, num_res_blocks: int = 5, channels: int = 64, board_size: int = 20):
+    def __init__(self, in_channels: int = 5, num_res_blocks: int = 5, channels: int = 64, board_size: int = 20):
         super().__init__()
         self.board_size = board_size
         
@@ -96,7 +97,7 @@ class AlphaZeroNet(nn.Module):
     def predict(self, obs_uint8: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Interface for the Rust PyAlphaZeroEngine.
-        Takes a batch of [B, 4, H, W] numpy arrays of dtype uint8.
+        Takes a batch of [B, 5, H, W] numpy arrays of dtype uint8.
         Returns tuple of (logits, values) as float32 numpy arrays.
         """
         self.eval()
